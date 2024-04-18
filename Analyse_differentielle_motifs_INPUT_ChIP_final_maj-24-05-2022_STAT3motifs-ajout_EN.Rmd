@@ -1,0 +1,265 @@
+---
+title: 'Motif analyses: comparison of TIR1 input sample and Smarca4-AID (20h auxine treatment) input for the fraction 2-3-4'
+output:
+  html_document:
+    df_print: paged
+author: "Marina Nocente"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Analysis goal
+
+I want to compare motifs between Tir1 input and Smarca4-AID input sample for fraction 2-3-4. I want to detect the ones that are commons or not when Smarca4 is depleted.
+
+# Samples used:
+
+- Pool 2-3-4 INPUT TIR1 (20h auxine) : 4 samples
+- Pool 2-3-4 INPUT SMARCA4-AID (20h auxine) : 4 samples
+
+# Analysis steps:
+
+1. Install MACS2 (v2.2.7.1), HOMER (v4.11) and Samtools (1.11) with conda (v4.11.0)
+2. Replicats fusions with Samtools
+3. Peak-calling with MACS2
+4. Peak annotations with HOMER
+5. Get motifs with HOMER
+6. Compared motifs with R
+
+
+## 1. Command line to install MACS2 and HOMER with conda
+
+I create one environnement for each tools
+
+```{bash, eval=FALSE}
+conda create -n macs2 -c bioconda -c conda-forge macs2=2.2.7.1
+conda create -n homer -c bioconda -c conda-forge homer=4.11
+conda create -n samtools -c bioconda -c conda-forge samtools=1.11
+```
+
+
+## 2. Fusionned replicats in each conditions
+
+To fusioned bam samples, samtools merge is used.
+
+```{bash, eval=FALSE}
+# activate samtools (v1.11) environnement
+conda activate samtools
+
+mkdir ./merged_bam
+
+# Fusion for samples TIR1 and SMARCA4-AID fraction 2-3-4
+samtools merge ./merged_bam/merge_input_Smarca4-AID_2-3-4.bam \
+         ./cleanedBam/S*_g2-3-4_.bam 2> ./merged_bam/SM4_2-3-4_merge.log
+samtools merge ./merged_bam/merge_input_TIR1_2-3-4.bam \
+         ./cleanedBam/T*_g2-3-4_.bam 2> ./merged_bam/TIR1_2-3-4_merge.log
+
+conda deactivate
+```
+
+
+## 3. Peak-calling with MACS2 on fusioned bam files
+
+
+
+```{bash, eval=FALSE}
+# activate macs2 with conda
+conda activate macs2
+
+mkdir macs2
+
+## macs2 parameters:
+# -t : The IP data file
+# -c : The control or mock data file
+# -f: format of input file
+# -g: mappable genome size which is defined as the genome size which can be sequenced; some precompiled values provided.
+# --outdir: MACS2 will save all output files into speficied folder for this option
+# --min-length : this parameter sets the minimum length required for a peak to be called
+
+macs2 callpeak -t ./merged_bam/merge_input_TIR1_2-3-4.bam -f BAMPE -g mm \
+      --outdir ./macs2 -n merge_input_TIR1_2-3-4 --min-length 40 \
+      2> ./macs2/merge_input_TIR1_2-3-4.log
+
+macs2 callpeak -t ./merged_bam/merge_input_Smarca4-AID_2-3-4.bam -f BAMPE \
+      -g mm --outdir ./macs2 -n merge_input_Smarca4-AID_2-3-4 --min-length 40 \
+      2> ./macs2/merge_input_Smarca4-AID_2-3-4.log
+
+conda deactivate
+
+wc -l ./macs2/merge_input_TIR1_2-3-4_peaks.narrowPeak
+wc -l ./macs2/merge_input_Smarca4-AID_2-3-4_peaks.narrowPeak
+```
+
+Number of peaks in each conditions:
+
+- merge_input_TIR1_2-3-4_peaks.narrowPeak : 439290
+- merge_input_Smarca4-AID_2-3-4_peaks.narrowPeak : 313974
+
+
+## 4. Peak's annotation with HOMER
+
+```{bash, eval=FALSE}
+# activate homer with conda
+conda active homer
+
+annotatePeaks.pl ./macs2/merge_input_TIR1_2-3-4_peaks.narrowPeak mm9 \
+                 -annStats stats_merge_input_TIR1_2-3-4 > \
+                 ./macs2/annotate_peaks_merge_input_TIR1_2-3-4_peaks.txt
+
+annotatePeaks.pl ./macs2/merge_input_Smarca4-AID_2-3-4_peaks.narrowPeak mm9 \
+                 -annStats stats_merge_input_Smarca4-AID_2-3-4 > \
+                 ./macs2/annotate_peaks_merge_input_Smarca4-AID_2-3-4_peaks.txt
+
+conda deactivate
+```
+
+## 5. Motif's detection with HOMER
+
+```{bash, eval=FALSE}
+# activate homer with conda
+conda active homer
+
+mkdir motifs_HOMER
+
+## findMotifsGenome parameters (HOMER)
+# <peak/BED file> : MACS2 peak file
+# <genome> : referenced genome (mm9)
+# <output directory> : result's directory
+# -size given : If you wish to find motifs using your peaks using their exact sizes, use the option "-size given").  However, for Transcription Factor peaks, most of the motifs are found +/- 50-75 bp from the peak center, making it better to use a fixed size rather than depend on your peak size.
+# -p : nombre de CPU a utiliser (1 par defaut)
+
+findMotifsGenome.pl ./macs2/merge_input_TIR1_2-3-4_peaks.narrowPeak mm9 \
+                    ./motifs_HOMER/motifs_TIR1_2-3-4 -size given -p 6 \
+                    2> motifs_merge_input_TIR1_2-3-4.log
+
+findMotifsGenome.pl ./macs2/merge_input_Smarca4-AID_2-3-4_peaks.narrowPeak mm9 \
+                    ./motifs_HOMER/motifs_Smarca4-AID_2-3-4 -size given -p 6 \
+                    2> motifs_merge_input_Smarca4-AID_2-3-4.log
+
+conda deactivate
+```
+
+In Homer documentation we can read [doc de HOMER](http://homer.ucsd.edu/homer/ngs/peakMotifs.html) : "In general, when analyzing ChIP-Seq / ChIP-Chip peaks you should expect to see strong enrichment for a motif resembling the site recognized by the DNA binding domain of the factor you are studying.  Enrichment p-values reported by HOMER should be very very significant (i.e. << 1e-50).  If this is not the case, there is a strong possibility that the experiment may have failed in one way or another.  For example, the peaks could be of low quality because the factor is not expressed very high."
+
+So I discarded motifs with a p-value > 1e-50
+
+
+## R: heatmap creation
+
+Heatmap for "Number of Target Sequences with Motif" with all the motifs.
+
+Referenced motifs are taken from "Input_TIR1_2-3-4_knownResults_modif_PlusSTAT3.txt". 32 motifs are available (p-value threshold 1e-50 with HOMER).
+
+```{r}
+#### LOADING LIBRARY
+library("gplots")
+
+# changing directory to go inside Homer output directory
+setwd("/store/EQUIPES/REMOD/201127_evry/bam/Marina_analyses/motifs_HOMER")
+
+#### READING DATA
+Input_TIR1_2_3_4_data <- read.table(file = "motifs_TIR1_2-3-4/knownResults.txt", header = TRUE, stringsAsFactors = FALSE, row.names = NULL, sep = "\t", comment.char = "")
+# adding short name to the dataframe
+short_col_name <- unlist(lapply(Input_TIR1_2_3_4_data$Motif.Name, function(data) toupper(strsplit(data, '\\(')[[1]][1])))
+Input_TIR1_2_3_4_data$name <- short_col_name
+
+Input_Smarca4_AID_2_3_4_data <- read.table(file = "motifs_Smarca4-AID_2-3-4/knownResults.txt", header = T, stringsAsFactors = F, row.names = NULL, sep = "\t", comment.char = "")
+short_col_name <- unlist(lapply(Input_Smarca4_AID_2_3_4_data$Motif.Name, function(data) toupper(strsplit(data, '\\(')[[1]][1])))
+Input_Smarca4_AID_2_3_4_data$name <- short_col_name
+
+# renaming REST-NRSF to REST
+Input_TIR1_2_3_4_data[Input_TIR1_2_3_4_data$name == "REST-NRSF",]$name <- "REST"
+# renaming TATA-BOX to TBP
+Input_TIR1_2_3_4_data[Input_TIR1_2_3_4_data$name == "TATA-BOX",]$name <- "TBP"
+
+# renaming REST-NRSF to REST
+Input_Smarca4_AID_2_3_4_data[Input_Smarca4_AID_2_3_4_data$name == "REST-NRSF",]$name <- "REST"
+# renaming TATA-BOX to TBP
+Input_Smarca4_AID_2_3_4_data[Input_Smarca4_AID_2_3_4_data$name == "TATA-BOX",]$name <- "TBP"
+
+# cleaning data frame columns to keep 1-4 and 6-7 and change column's name
+column_name <- c("Motif_name", "Consensus", "P-value", "Log_P-value", "Number_of_target_sequences_with_motif", "Pourcentage_of_target_sequences_with_motif", "Name")
+
+Input_TIR1_2_3_4_data <- Input_TIR1_2_3_4_data[, c(1:4, 6:7, 10)]
+head(Input_TIR1_2_3_4_data, n=3L)
+colnames(Input_TIR1_2_3_4_data) <- column_name
+head(Input_TIR1_2_3_4_data, n=3L)
+
+Input_Smarca4_AID_2_3_4_data <- Input_Smarca4_AID_2_3_4_data[, c(1:4, 6:7, 10)]
+head(Input_Smarca4_AID_2_3_4_data, n=3L)
+colnames(Input_Smarca4_AID_2_3_4_data) <- column_name
+head(Input_Smarca4_AID_2_3_4_data, n=3L)
+
+#### FILTERING ON INTERESTING MOTIFS
+# filtering motifs
+motif_name <- c("CTCF", "E2F4", "EGR2", "EKLF", "ELK4", "ERRG", "ESRRB", "ETS1", "FOS", "FOXF1", "KLF1", "KLF3", "KLF4", "KLF5", "KLF6", "KLF9", "NANOG", "NRF2", "OCT4", "PROP1", "REST", "SF1", "SIX4", "SOX2", "SP1", "SP2", "SP5", "STAT3", "STAT6", "TBP", "TCF3", "YY1")
+Input_TIR1_2_3_4_data <- Input_TIR1_2_3_4_data[Input_TIR1_2_3_4_data$Name %in% motif_name,]
+Input_Smarca4_AID_2_3_4_data <- Input_Smarca4_AID_2_3_4_data[Input_Smarca4_AID_2_3_4_data$Name %in% motif_name,]
+
+rm_motif <- "STAT6(Stat)/Macrophage-Stat6-ChIP-Seq(GSE38377)/Homer"
+Input_TIR1_2_3_4_data <- Input_TIR1_2_3_4_data[Input_TIR1_2_3_4_data$Motif_name != rm_motif,]
+Input_Smarca4_AID_2_3_4_data <- Input_Smarca4_AID_2_3_4_data[Input_Smarca4_AID_2_3_4_data$Motif_name != rm_motif,]
+
+#### CREATION OF RATIO DATAFRAME
+# merging in one data.frame
+df_TIR_SM4_2_4 <- merge(Input_TIR1_2_3_4_data, Input_Smarca4_AID_2_3_4_data, by = "Name")
+head(df_TIR_SM4_2_4)
+class(df_TIR_SM4_2_4) # data.frame
+dim(df_TIR_SM4_2_4) # 32 lignes (mes motifs) et 13 colonnes
+
+## keeping columns : "Name", "Number_of_target_sequences_with_motif.x" and "Number_of_target_sequences_with_motif.y"
+df_TIR_SM4_2_4 <- df_TIR_SM4_2_4[,c(1, 6, 12)]
+class(df_TIR_SM4_2_4) # data.frame
+dim(df_TIR_SM4_2_4) # 32 motif's rows and 3 columns
+
+## normalisation by CTCF motif
+# dividing # TIR1 CTCF motifs by # Smarca4-AID CTCF motifs
+cor_CTCF_df_TIR_SM4_2_4 <- df_TIR_SM4_2_4[1,2]/df_TIR_SM4_2_4[1,3]
+print(cor_CTCF_df_TIR_SM4_2_4)
+
+# applying the CTCF normalisation factor for evry motifs in Smarca4-AID sample
+df_TIR_SM4_2_4$Number_of_target_sequences_with_motif.y <- df_TIR_SM4_2_4[,3]*cor_CTCF_df_TIR_SM4_2_4
+
+# adding new column for the ratio Smarca4-AID/TIR1
+ratio_Input_SM4_TIR1_2_4 <- df_TIR_SM4_2_4$Number_of_target_sequences_with_motif.y / df_TIR_SM4_2_4$Number_of_target_sequences_with_motif.x
+df_TIR_SM4_2_4$Ratio_SM4_TIR1_2_4_Input <- ratio_Input_SM4_TIR1_2_4
+
+## filtering for 2 columns "Name", "Ratio"
+df_TIR_SM4_2_4 <- df_TIR_SM4_2_4[,c(1, 4)]
+
+## merging data.frame
+df_input <- merge(x = df_TIR_SM4_2_4, y = df_TIR_SM4_2_4, by = "Name")
+
+# renaming the raw by the motif's name ("Name" column) and keeping "Ratio"
+rownames(df_input) <- df_input$Name
+df_input <- df_input[,2:3]
+str(df_input)
+
+#### HEATMAP CREATION
+# matrix conversion for the heamap.2 function
+mt_final <- as.matrix(df_input)
+class(mt_final) # matrix
+dim(mt_final) # 32 motif's row x 2 columns
+str(mt_final)
+
+# heatmap without column dendrogram
+pdf("Heatmap_ratios_number_target_sequences_normCTCF_sans_dendrogramme_Input_2-4_PlusSTAT3.pdf", height=10,width=10)
+heatmap.2(x = mt_final, Rowv = TRUE, Colv = FALSE, scale = "none", trace = "none", density.info = "none", margins = c(15, 12), lwid = c(5,15), lhei = c(5,15), cexRow = 1.1, cexCol = 1.1, hclustfun = hclust, dendrogram = "row", key = TRUE, xlab = "")
+dev.off()
+
+# x : numeric matrix of the values to be plotted.
+# Rowv : determines if and how the row dendrogram should be reordered.	By default, it is TRUE, which implies dendrogram is computed and reordered based on row means. If NULL or FALSE, then no dendrogram is computed and no reordering is done. If a dendrogram, then it is used "as-is", ie without any reordering. If a vector of integers, then dendrogram is computed and reordered based on the order of the vector.
+# Colv : determines if and how the column dendrogram should be reordered.	Has the options as the Rowv argument above and additionally when x is a square matrix, Colv="Rowv" means that columns should be treated identically to the rows.
+
+
+# cexRow : facteur de grandissement des caractères pour les noms des lignes.
+# cexCol : facteur de grandissement des caractères pour les noms des colonnes.
+# margins : vecteur à 2 valeurs (bottom, right) pour les marges du côté des noms des colonnes et des lignes.
+# scale : indique si ce sont les lignes ("row") ou les colonnes ("col") qui doivent être recentrées et mises à l'échelle. Mettre "none" pour ne pas faire de remise à l'échelle (représentation des valeurs brutes).
+# key : TRUE --> presence d'une legende
+
+
+
+```
